@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Copie du projet de Clem</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
+    .title {
+      position: fixed;
+      top: 20px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      z-index: 100;
+      color: #333;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+      font-size: 3em;
+      font-weight: bold;
+    }
+    canvas {
+      display: block;
+      background-color: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+<h1 class="title">Tete du Colisee</h1>
+<canvas></canvas>
+
+<script>
+const canvas = document.querySelector('canvas');
+const ctx = canvas.getContext('2d');
+
+// Ajuster la taille du canvas pour qu'il prenne tout l'écran
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const gravity = 0.1;
+const friction = 0.8;
+const restitution = 0.7;
+const deviceOrientationFactor = 0.1; // Facteur d'influence de l'orientation
+
+// Liste des images à charger
+const imagePaths = [
+  'assets/imrane.jpeg',
+  'assets/ben.png',
+  'assets/lakpo.jpeg',
+  'assets/damia.jpeg',
+  'assets/lord.png',
+  'assets/lina.png'
+];
+
+class Ball {
+  constructor(x, y, radius, dx, dy, image) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.dx = dx;
+    this.dy = dy;
+    this.image = image;
+    this.mass = radius * radius;
+    this.isDragging = false;
+  }
+
+  draw() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    
+    // Dessiner l'image
+    ctx.drawImage(
+      this.image,
+      this.x - this.radius,
+      this.y - this.radius,
+      this.radius * 2,
+      this.radius * 2
+    );
+    
+    ctx.restore();
+    
+    // Ajouter une bordure
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.closePath();
+  }
+
+  update(balls, deviceOrientation) {
+    if (!this.isDragging) {
+      // Ajouter l'influence de l'orientation du téléphone
+      if (deviceOrientation) {
+        this.dx += deviceOrientation.gamma * deviceOrientationFactor;
+        this.dy += deviceOrientation.beta * deviceOrientationFactor;
+      }
+      
+      this.dy += gravity;
+      this.x += this.dx;
+      this.y += this.dy;
+    }
+
+    // Rebond sur les bords
+    if (this.x + this.radius > canvas.width) {
+      this.dx = -this.dx * friction;
+      this.x = canvas.width - this.radius;
+    }
+    if (this.x - this.radius < 0) {
+      this.dx = -this.dx * friction;
+      this.x = this.radius;
+    }
+    if (this.y + this.radius > canvas.height) {
+      this.dy = -this.dy * friction;
+      this.y = canvas.height - this.radius;
+    }
+
+    // Collision avec les autres boules
+    for (let other of balls) {
+      if (other === this) continue;
+
+      let dx = other.x - this.x;
+      let dy = other.y - this.y;
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance < this.radius + other.radius) {
+        // Calcul de l'angle de collision
+        let angle = Math.atan2(dy, dx);
+        let sin = Math.sin(angle);
+        let cos = Math.cos(angle);
+
+        // Rotation des vitesses
+        let vx1 = this.dx * cos + this.dy * sin;
+        let vy1 = this.dy * cos - this.dx * sin;
+        let vx2 = other.dx * cos + other.dy * sin;
+        let vy2 = other.dy * cos - other.dx * sin;
+
+        // Calcul des nouvelles vitesses après collision
+        let finalVx1 = ((this.mass - other.mass) * vx1 + 2 * other.mass * vx2) / (this.mass + other.mass);
+        let finalVx2 = ((other.mass - this.mass) * vx2 + 2 * this.mass * vx1) / (this.mass + other.mass);
+
+        // Application de la restitution
+        finalVx1 *= restitution;
+        finalVx2 *= restitution;
+
+        // Rotation inverse des vitesses
+        this.dx = finalVx1 * cos - vy1 * sin;
+        this.dy = vy1 * cos + finalVx1 * sin;
+        other.dx = finalVx2 * cos - vy2 * sin;
+        other.dy = vy2 * cos + finalVx2 * sin;
+
+        // Séparation des boules pour éviter qu'elles restent collées
+        let overlap = (this.radius + other.radius - distance) / 2;
+        this.x -= overlap * cos;
+        this.y -= overlap * sin;
+        other.x += overlap * cos;
+        other.y += overlap * sin;
+      }
+    }
+
+    this.draw();
+  }
+}
+
+let balls = [];
+let selectedBall = null;
+let imagesLoaded = 0;
+
+// Variables pour l'orientation du téléphone
+let deviceOrientation = null;
+
+// Détecter l'orientation du téléphone
+function handleOrientation(event) {
+  deviceOrientation = {
+    beta: event.beta,  // Inclinaison avant/arrière
+    gamma: event.gamma // Inclinaison gauche/droite
+  };
+}
+
+// Demander la permission d'accéder à l'orientation
+if (window.DeviceOrientationEvent) {
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+
+    DeviceOrientationEvent.requestPermission()
+      .then(permissionState => {
+        if (permissionState === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation);
+        }
+      })
+      .catch(console.error);
+  } else {
+    // Autres appareils
+    window.addEventListener('deviceorientation', handleOrientation);
+  }
+}
+
+// Charger toutes les images
+const images = imagePaths.map(path => {
+  const img = new Image();
+  img.src = path;
+  img.onload = () => {
+    imagesLoaded++;
+    if (imagesLoaded === imagePaths.length) {
+      startSimulation();
+    }
+  };
+  return img;
+});
+
+function startSimulation() {
+  // Créer les boules avec les images (2 fois chaque image)
+  const imagePairs = [];
+  for (let i = 0; i < images.length; i++) {
+    imagePairs.push(images[i]);
+    imagePairs.push(images[i]);
+  }
+
+  // Mélanger les paires d'images
+  for (let i = imagePairs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [imagePairs[i], imagePairs[j]] = [imagePairs[j], imagePairs[i]];
+  }
+
+  // Créer les boules avec les images mélangées
+  for (let i = 0; i < imagePairs.length; i++) {
+    let radius = 100;
+    let x = Math.random() * (canvas.width - radius * 2) + radius;
+    let y = Math.random() * canvas.height / 2;
+    let dx = (Math.random() - 0.5) * 2;
+    let dy = (Math.random() - 0.5) * 2;
+    balls.push(new Ball(x, y, radius, dx, dy, imagePairs[i]));
+  }
+
+  // Gestion des événements de la souris
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    for (let ball of balls) {
+      const distance = Math.sqrt((x - ball.x) ** 2 + (y - ball.y) ** 2);
+      if (distance < ball.radius) {
+        selectedBall = ball;
+        ball.isDragging = true;
+        break;
+      }
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (selectedBall && selectedBall.isDragging) {
+      const rect = canvas.getBoundingClientRect();
+      selectedBall.x = e.clientX - rect.left;
+      selectedBall.y = e.clientY - rect.top;
+      selectedBall.dx = 0;
+      selectedBall.dy = 0;
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    if (selectedBall) {
+      selectedBall.isDragging = false;
+      selectedBall = null;
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (selectedBall) {
+      selectedBall.isDragging = false;
+      selectedBall = null;
+    }
+  });
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let ball of balls) {
+      ball.update(balls, deviceOrientation);
+    }
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+}
+</script>
+</body>
+</html>
+
