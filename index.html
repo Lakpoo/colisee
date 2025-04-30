@@ -45,7 +45,7 @@ canvas.height = window.innerHeight;
 const gravity = 0.1;
 const friction = 0.8;
 const restitution = 0.7;
-const deviceOrientationFactor = 0.1; // Facteur d'influence de l'orientation
+const deviceOrientationFactor = 0.2; // Augmenté le facteur pour plus de sensibilité
 
 // Liste des images à charger
 const imagePaths = [
@@ -56,6 +56,83 @@ const imagePaths = [
   'assets/lord.png',
   'assets/lina.png'
 ];
+
+// Variables pour l'orientation du téléphone
+let deviceOrientation = {
+  beta: 0,
+  gamma: 0
+};
+
+// Détecter l'orientation du téléphone
+function handleOrientation(event) {
+  // Normaliser les valeurs
+  deviceOrientation.beta = event.beta ? event.beta / 90 : 0;  // -1 à 1
+  deviceOrientation.gamma = event.gamma ? event.gamma / 90 : 0; // -1 à 1
+  
+  // Log pour débogage
+  console.log('Orientation:', deviceOrientation);
+}
+
+// Détecter si on est sur un appareil mobile
+function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// Initialiser l'orientation
+function initOrientation() {
+  if (isMobileDevice()) {
+    console.log('Appareil mobile détecté');
+    
+    if (window.DeviceOrientationEvent) {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS 13+
+        console.log('Demande de permission pour iOS');
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            console.log('Permission:', permissionState);
+            if (permissionState === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation);
+            }
+          })
+          .catch(error => {
+            console.error('Erreur de permission:', error);
+          });
+      } else {
+        // Autres appareils
+        console.log('Ajout du listener deviceorientation');
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+    } else {
+      console.log('DeviceOrientationEvent non supporté');
+    }
+  } else {
+    console.log('Pas un appareil mobile');
+    // Simuler l'orientation pour le test sur ordinateur
+    document.addEventListener('keydown', (e) => {
+      switch(e.key) {
+        case 'ArrowLeft':
+          deviceOrientation.gamma = -1;
+          break;
+        case 'ArrowRight':
+          deviceOrientation.gamma = 1;
+          break;
+        case 'ArrowUp':
+          deviceOrientation.beta = -1;
+          break;
+        case 'ArrowDown':
+          deviceOrientation.beta = 1;
+          break;
+      }
+    });
+    document.addEventListener('keyup', () => {
+      deviceOrientation.beta = 0;
+      deviceOrientation.gamma = 0;
+    });
+  }
+}
+
+// Appeler l'initialisation
+initOrientation();
 
 class Ball {
   constructor(x, y, radius, dx, dy, image) {
@@ -102,6 +179,11 @@ class Ball {
       if (deviceOrientation) {
         this.dx += deviceOrientation.gamma * deviceOrientationFactor;
         this.dy += deviceOrientation.beta * deviceOrientationFactor;
+        
+        // Limiter la vitesse maximale
+        const maxSpeed = 5;
+        this.dx = Math.max(Math.min(this.dx, maxSpeed), -maxSpeed);
+        this.dy = Math.max(Math.min(this.dy, maxSpeed), -maxSpeed);
       }
       
       this.dy += gravity;
@@ -173,34 +255,6 @@ class Ball {
 let balls = [];
 let selectedBall = null;
 let imagesLoaded = 0;
-
-// Variables pour l'orientation du téléphone
-let deviceOrientation = null;
-
-// Détecter l'orientation du téléphone
-function handleOrientation(event) {
-  deviceOrientation = {
-    beta: event.beta,  // Inclinaison avant/arrière
-    gamma: event.gamma // Inclinaison gauche/droite
-  };
-}
-
-// Demander la permission d'accéder à l'orientation
-if (window.DeviceOrientationEvent) {
-  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS 13+
-    DeviceOrientationEvent.requestPermission()
-      .then(permissionState => {
-        if (permissionState === 'granted') {
-          window.addEventListener('deviceorientation', handleOrientation);
-        }
-      })
-      .catch(console.error);
-  } else {
-    // Autres appareils
-    window.addEventListener('deviceorientation', handleOrientation);
-  }
-}
 
 // Charger toutes les images
 const images = imagePaths.map(path => {
