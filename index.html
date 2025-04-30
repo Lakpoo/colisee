@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Copie du projet de Clem</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     body, html {
       margin: 0;
@@ -10,6 +11,10 @@
       overflow: hidden;
       background-color: #f0f0f0;
       font-family: Arial, sans-serif;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
     .title {
       position: fixed;
@@ -27,12 +32,22 @@
       display: block;
       background-color: white;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      touch-action: none;
     }
   </style>
 </head>
 <body>
 <h1 class="title">Tete du Colisee</h1>
 <canvas></canvas>
+<button id="enable-motion" style="
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  font-size: 1.2em;
+  z-index: 1000;
+">Activer la gravité</button>
 
 <script>
 const canvas = document.querySelector('canvas');
@@ -60,79 +75,141 @@ const imagePaths = [
 // Variables pour l'orientation du téléphone
 let deviceOrientation = {
   beta: 0,
-  gamma: 0
+  gamma: 0,
+  alpha: 0
 };
+
+// Variables pour le touch
+let touchStartX = 0;
+let touchStartY = 0;
+let selectedBall = null;
 
 // Détecter l'orientation du téléphone
 function handleOrientation(event) {
-  // Normaliser les valeurs
-  deviceOrientation.beta = event.beta ? event.beta / 90 : 0;  // -1 à 1
-  deviceOrientation.gamma = event.gamma ? event.gamma / 90 : 0; // -1 à 1
-  
-  // Log pour débogage
-  console.log('Orientation:', deviceOrientation);
-}
-
-// Détecter si on est sur un appareil mobile
-function isMobileDevice() {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
-
-// Initialiser l'orientation
-function initOrientation() {
-  if (isMobileDevice()) {
-    console.log('Appareil mobile détecté');
+  // Vérifier si les valeurs sont disponibles
+  if (event.beta !== null && event.gamma !== null && event.alpha !== null) {
+    // Normaliser les valeurs
+    deviceOrientation.beta = event.beta / 90;  // Inclinaison avant/arrière (-1 à 1)
+    deviceOrientation.gamma = event.gamma / 90; // Inclinaison gauche/droite (-1 à 1)
+    deviceOrientation.alpha = event.alpha / 360; // Rotation (0 à 1)
     
-    if (window.DeviceOrientationEvent) {
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+
-        console.log('Demande de permission pour iOS');
-        DeviceOrientationEvent.requestPermission()
-          .then(permissionState => {
-            console.log('Permission:', permissionState);
-            if (permissionState === 'granted') {
-              window.addEventListener('deviceorientation', handleOrientation);
-            }
-          })
-          .catch(error => {
-            console.error('Erreur de permission:', error);
-          });
-      } else {
-        // Autres appareils
-        console.log('Ajout du listener deviceorientation');
-        window.addEventListener('deviceorientation', handleOrientation);
-      }
-    } else {
-      console.log('DeviceOrientationEvent non supporté');
-    }
-  } else {
-    console.log('Pas un appareil mobile');
-    // Simuler l'orientation pour le test sur ordinateur
-    document.addEventListener('keydown', (e) => {
-      switch(e.key) {
-        case 'ArrowLeft':
-          deviceOrientation.gamma = -1;
-          break;
-        case 'ArrowRight':
-          deviceOrientation.gamma = 1;
-          break;
-        case 'ArrowUp':
-          deviceOrientation.beta = -1;
-          break;
-        case 'ArrowDown':
-          deviceOrientation.beta = 1;
-          break;
-      }
-    });
-    document.addEventListener('keyup', () => {
-      deviceOrientation.beta = 0;
-      deviceOrientation.gamma = 0;
+    console.log('Orientation:', {
+      beta: deviceOrientation.beta.toFixed(2),
+      gamma: deviceOrientation.gamma.toFixed(2),
+      alpha: deviceOrientation.alpha.toFixed(2)
     });
   }
 }
 
+// Gestion des événements tactiles
+function handleTouchStart(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+
+  for (let ball of balls) {
+    const distance = Math.sqrt((x - ball.x) ** 2 + (y - ball.y) ** 2);
+    if (distance < ball.radius) {
+      selectedBall = ball;
+      ball.isDragging = true;
+      touchStartX = x;
+      touchStartY = y;
+      break;
+    }
+  }
+}
+
+function handleTouchMove(e) {
+  e.preventDefault();
+  if (selectedBall && selectedBall.isDragging) {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    selectedBall.x = touch.clientX - rect.left;
+    selectedBall.y = touch.clientY - rect.top;
+    selectedBall.dx = 0;
+    selectedBall.dy = 0;
+  }
+}
+
+function handleTouchEnd(e) {
+  e.preventDefault();
+  if (selectedBall) {
+    selectedBall.isDragging = false;
+    selectedBall = null;
+  }
+}
+
+// Initialiser l'orientation et les événements tactiles
+function initControls() {
+  const enableMotionButton = document.getElementById('enable-motion');
+
+  enableMotionButton.addEventListener('click', () => {
+    if (window.DeviceOrientationEvent) {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation);
+              enableMotionButton.style.display = 'none';
+              console.log('Accès aux capteurs accordé.');
+            } else {
+              alert('Permission refusée. Impossible d\'activer la gravité.');
+            }
+          })
+          .catch(console.error);
+      } else {
+        // Android ou navigateurs sans demande de permission
+        window.addEventListener('deviceorientation', handleOrientation);
+        enableMotionButton.style.display = 'none';
+        console.log('Capteurs activés sans demande.');
+      }
+    } else {
+      alert('Capteurs non supportés sur cet appareil.');
+    }
+  });
+
+  // Touch + souris
+  canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+  canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    for (let ball of balls) {
+      const distance = Math.sqrt((x - ball.x) ** 2 + (y - ball.y) ** 2);
+      if (distance < ball.radius) {
+        selectedBall = ball;
+        ball.isDragging = true;
+        break;
+      }
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (selectedBall && selectedBall.isDragging) {
+      const rect = canvas.getBoundingClientRect();
+      selectedBall.x = e.clientX - rect.left;
+      selectedBall.y = e.clientY - rect.top;
+      selectedBall.dx = 0;
+      selectedBall.dy = 0;
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    if (selectedBall) {
+      selectedBall.isDragging = false;
+      selectedBall = null;
+    }
+  });
+}
+
+
 // Appeler l'initialisation
-initOrientation();
+initControls();
 
 class Ball {
   constructor(x, y, radius, dx, dy, image) {
@@ -177,11 +254,13 @@ class Ball {
     if (!this.isDragging) {
       // Ajouter l'influence de l'orientation du téléphone
       if (deviceOrientation) {
-        this.dx += deviceOrientation.gamma * deviceOrientationFactor;
-        this.dy += deviceOrientation.beta * deviceOrientationFactor;
+        // Augmenter l'influence de l'orientation
+        const orientationFactor = 0.5;
+        this.dx += deviceOrientation.gamma * orientationFactor;
+        this.dy += deviceOrientation.beta * orientationFactor;
         
         // Limiter la vitesse maximale
-        const maxSpeed = 5;
+        const maxSpeed = 10;
         this.dx = Math.max(Math.min(this.dx, maxSpeed), -maxSpeed);
         this.dy = Math.max(Math.min(this.dy, maxSpeed), -maxSpeed);
       }
@@ -253,7 +332,6 @@ class Ball {
 }
 
 let balls = [];
-let selectedBall = null;
 let imagesLoaded = 0;
 
 // Charger toutes les images
@@ -268,6 +346,20 @@ const images = imagePaths.map(path => {
   };
   return img;
 });
+
+function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+function getBallRadius() {
+  if (isMobileDevice()) {
+    // Sur mobile, la taille est proportionnelle à la largeur de l'écran
+    return Math.min(window.innerWidth, window.innerHeight) * 0.15; // 15% de la plus petite dimension
+  } else {
+    // Sur PC, on garde la taille fixe
+    return 100;
+  }
+}
 
 function startSimulation() {
   // Créer les boules avec les images (2 fois chaque image)
@@ -285,53 +377,13 @@ function startSimulation() {
 
   // Créer les boules avec les images mélangées
   for (let i = 0; i < imagePairs.length; i++) {
-    let radius = 100;
+    let radius = getBallRadius();
     let x = Math.random() * (canvas.width - radius * 2) + radius;
     let y = Math.random() * canvas.height / 2;
     let dx = (Math.random() - 0.5) * 2;
     let dy = (Math.random() - 0.5) * 2;
     balls.push(new Ball(x, y, radius, dx, dy, imagePairs[i]));
   }
-
-  // Gestion des événements de la souris
-  canvas.addEventListener('mousedown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    for (let ball of balls) {
-      const distance = Math.sqrt((x - ball.x) ** 2 + (y - ball.y) ** 2);
-      if (distance < ball.radius) {
-        selectedBall = ball;
-        ball.isDragging = true;
-        break;
-      }
-    }
-  });
-
-  canvas.addEventListener('mousemove', (e) => {
-    if (selectedBall && selectedBall.isDragging) {
-      const rect = canvas.getBoundingClientRect();
-      selectedBall.x = e.clientX - rect.left;
-      selectedBall.y = e.clientY - rect.top;
-      selectedBall.dx = 0;
-      selectedBall.dy = 0;
-    }
-  });
-
-  canvas.addEventListener('mouseup', () => {
-    if (selectedBall) {
-      selectedBall.isDragging = false;
-      selectedBall = null;
-    }
-  });
-
-  canvas.addEventListener('mouseleave', () => {
-    if (selectedBall) {
-      selectedBall.isDragging = false;
-      selectedBall = null;
-    }
-  });
 
   function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
