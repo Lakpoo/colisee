@@ -101,6 +101,25 @@ function handleOrientation(event) {
   }
 }
 
+function handleMotion(event) {
+  const acc = event.accelerationIncludingGravity;
+
+  // Calcule la force totale de l'accélération
+  const totalAcc = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
+
+  // Seuil de secousse (ajuste si trop sensible ou pas assez)
+  const threshold = 18;
+
+  if (totalAcc > threshold) {
+    console.log('💥 Secousse détectée !', totalAcc.toFixed(2));
+
+    for (let ball of balls) {
+      // Appliquer une vitesse aléatoire pour simuler le choc
+      ball.dx += (Math.random() - 0.5) * 20;
+      ball.dy += (Math.random() - 0.5) * 20;
+    }
+  }
+}
 // Gestion des événements tactiles
 function handleTouchStart(e) {
   e.preventDefault();
@@ -152,6 +171,7 @@ function initControls() {
           .then(permissionState => {
             if (permissionState === 'granted') {
               window.addEventListener('deviceorientation', handleOrientation);
+              window.addEventListener('devicemotion', handleMotion);
               enableMotionButton.style.display = 'none';
               console.log('Accès aux capteurs accordé.');
             } else {
@@ -162,6 +182,7 @@ function initControls() {
       } else {
         // Android ou navigateurs sans demande de permission
         window.addEventListener('deviceorientation', handleOrientation);
+        
         enableMotionButton.style.display = 'none';
         console.log('Capteurs activés sans demande.');
       }
@@ -354,10 +375,10 @@ function isMobileDevice() {
 function getBallRadius() {
   if (isMobileDevice()) {
     // Sur mobile, la taille est proportionnelle à la largeur de l'écran
-    return Math.min(window.innerWidth, window.innerHeight) * 0.15; // 15% de la plus petite dimension
+    return Math.min(window.innerWidth, window.innerHeight) * 0.10; // 15% de la plus petite dimension
   } else {
     // Sur PC, on garde la taille fixe
-    return 100;
+    return 90;
   }
 }
 
